@@ -1,0 +1,78 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Wireless Probe Test",
+            "type": "process",
+            "command": "${env:ComSpec}",
+            "args": [
+                "/d",
+                "/c",
+                "call",
+                "${workspaceFolder}\\Scripts\\wireless_probe_test.bat"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            }
+        },
+        {
+            "label": "Wireless Flash",
+            "type": "process",
+            "command": "${env:ComSpec}",
+            "args": [
+                "/d",
+                "/c",
+                "call",
+                "${workspaceFolder}\\Scripts\\wireless_flash.bat"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            }
+        },
+        {
+            "label": "CCS Build (Debug CLI)",
+            "type": "process",
+            "command": "D:\\ti\\ccstheia151\\ccs\\utils\\bin\\gmake.exe",
+            "args": [
+                "-C",
+                "${workspaceFolder}\\Debug",
+                "all"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [],
+            "group": "build",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            }
+        },
+        {
+            "label": "Build + Wireless Flash",
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "CCS Build (Debug CLI)",
+                "Wireless Flash"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": []
+        }
+    ]
+}

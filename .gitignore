@@ -1,0 +1,26 @@
+# CCS / TI managed-build outputs
+/Debug/
+/Release/
+/*.out
+/*.map
+/*.hex
+/*.bin
+/*.d_raw
+*.vsix
+
+# Eclipse/CCS workspace-local data (project metadata remains tracked)
+/.metadata/
+
+# Local AI agent support files
+/.agents/
+
+# Editor and operating-system noise
+*.log
+*.tmp
+*.swp
+*~
+__pycache__/
+*.py[cod]
+.DS_Store
+Thumbs.db
+desktop.ini

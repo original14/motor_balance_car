@@ -1,0 +1,51 @@
+{
+  "name": "motor-balance-car-wireless",
+  "displayName": "Motor Balance Car Wireless Flash",
+  "description": "CMSIS-DAP wireless probe and OpenOCD flash commands for the motor_balance_car CCS Theia project.",
+  "version": "1.0.3",
+  "publisher": "local",
+  "engines": {
+    "vscode": "^1.52.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:motorBalanceCar.wirelessProbeTest",
+    "onCommand:motorBalanceCar.wirelessFlash",
+    "onCommand:motorBalanceCar.buildAndWirelessFlash"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "motorBalanceCar.wirelessProbeTest",
+        "title": "Wireless: Probe Test"
+      },
+      {
+        "command": "motorBalanceCar.wirelessFlash",
+        "title": "Wireless: Flash"
+      },
+      {
+        "command": "motorBalanceCar.buildAndWirelessFlash",
+        "title": "Wireless: Build + Flash"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "motorBalanceCar.buildAndWirelessFlash",
+        "key": "ctrl+shift+b"
+      }
+    ],
+    "configuration": {
+      "title": "Motor Balance Car Wireless Flash",
+      "properties": {
+        "motorBalanceCar.projectPath": {
+          "type": "string",
+          "default": "C:\\Users\\Lenovo\\workspace_ccstheia\\motor_balance_car",
+          "description": "Absolute path of the motor_balance_car CCS project."
+        }
+      }
+    }
+  }
+}
