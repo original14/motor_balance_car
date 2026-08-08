@@ -13,13 +13,13 @@
 #define MOTOR_OUTPUT_MASTER_ENABLE 1
 
 /*==================== 电机与编码器方向 ====================*/
-#define LEFT_MOTOR_REVERSE    1
+#define LEFT_MOTOR_REVERSE    0
 #define RIGHT_MOTOR_REVERSE   1
 #define LEFT_ENCODER_REVERSE  1
 #define RIGHT_ENCODER_REVERSE 0
 
 /*==================== 编码器参数 ====================*/
-#define LEFT_ENCODER_CPR   1320.0f
+#define LEFT_ENCODER_CPR   60000.0f
 #define RIGHT_ENCODER_CPR  60000.0f
 
 /*==================== 控制与遥测周期 ====================*/
