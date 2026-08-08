@@ -4,6 +4,7 @@
 #include "App/serial_command.h"
 #include "App/vofa_telemetry.h"
 #include "Hardware/bsp_encoder.h"
+#include "Hardware/bsp_icm42688.h"
 #include "Hardware/bsp_tb6612.h"
 #include "Hardware/bsp_uart.h"
 
@@ -13,6 +14,7 @@ int main(void)
     TB6612_Init();
     Encoder_Init();
     UART_Init();
+    (void)ICM42688_Init();
     MotorApp_Init();
     while (1) {
         SerialCommand_Process();

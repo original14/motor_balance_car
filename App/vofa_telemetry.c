@@ -6,10 +6,13 @@
 #include <stdint.h>
 
 #include "App/motor_app.h"
+#include "Config/telemetry_config.h"
+#include "Hardware/bsp_icm42688.h"
 #include "Hardware/bsp_uart.h"
 
 #define VOFA_TX_BUFFER_SIZE 256U
 
+#if TELEMETRY_OUTPUT_MODE != TELEMETRY_MODE_OFF
 static bool appendChar(char *buffer, size_t *length, char value)
 {
     if (*length >= VOFA_TX_BUFFER_SIZE) return false;
@@ -31,6 +34,7 @@ static bool appendUnsigned(char *buffer, size_t *length, uint64_t value)
     return true;
 }
 
+#if TELEMETRY_OUTPUT_MODE == TELEMETRY_MODE_MOTOR
 static bool appendInteger(char *buffer, size_t *length, int64_t value)
 {
     uint64_t magnitude;
@@ -57,6 +61,7 @@ static bool appendFixed2(char *buffer, size_t *length, float value)
     if (!appendChar(buffer, length, (char)('0' + ((scaled / 10U) % 10U)))) return false;
     return appendChar(buffer, length, (char)('0' + (scaled % 10U)));
 }
+#endif
 
 static bool appendFixed4(char *buffer, size_t *length, float value)
 {
@@ -74,9 +79,13 @@ static bool appendFixed4(char *buffer, size_t *length, float value)
     if (!appendChar(buffer, length, (char)('0' + ((scaled / 10U) % 10U)))) return false;
     return appendChar(buffer, length, (char)('0' + (scaled % 10U)));
 }
+#endif
 
 void VOFATelemetry_Process(void)
 {
+#if TELEMETRY_OUTPUT_MODE == TELEMETRY_MODE_OFF
+    (void)MotorApp_TakeTelemetryFlag();
+#elif TELEMETRY_OUTPUT_MODE == TELEMETRY_MODE_MOTOR
     static char buffer[VOFA_TX_BUFFER_SIZE];
     MotorTelemetry data;
     size_t length = 0U;
@@ -117,4 +126,34 @@ void VOFATelemetry_Process(void)
     ok &= appendChar(buffer, &length, '\r');
     ok &= appendChar(buffer, &length, '\n');
     if (ok) UART_Write(buffer, length);
+#elif TELEMETRY_OUTPUT_MODE == TELEMETRY_MODE_IMU
+    static char buffer[VOFA_TX_BUFFER_SIZE];
+    ICM42688_Sample data;
+    size_t length = 0U;
+    bool ok = true;
+    if (!MotorApp_TakeTelemetryFlag()) return;
+    (void)ICM42688_GetLatestSample(&data);
+    ok &= appendFixed4(buffer, &length, data.accel_x_g);
+    ok &= appendChar(buffer, &length, ',');
+    ok &= appendFixed4(buffer, &length, data.accel_y_g);
+    ok &= appendChar(buffer, &length, ',');
+    ok &= appendFixed4(buffer, &length, data.accel_z_g);
+    ok &= appendChar(buffer, &length, ',');
+    ok &= appendFixed4(buffer, &length, data.gyro_x_dps);
+    ok &= appendChar(buffer, &length, ',');
+    ok &= appendFixed4(buffer, &length, data.gyro_y_dps);
+    ok &= appendChar(buffer, &length, ',');
+    ok &= appendFixed4(buffer, &length, data.gyro_z_dps);
+    ok &= appendChar(buffer, &length, ',');
+    ok &= appendUnsigned(buffer, &length, data.valid ? 1U : 0U);
+    ok &= appendChar(buffer, &length, ',');
+    ok &= appendUnsigned(buffer, &length, ICM42688_GetWhoAmI());
+    ok &= appendChar(buffer, &length, ',');
+    ok &= appendUnsigned(buffer, &length, data.sample_count);
+    ok &= appendChar(buffer, &length, ',');
+    ok &= appendUnsigned(buffer, &length, ICM42688_GetErrorCount());
+    ok &= appendChar(buffer, &length, '\r');
+    ok &= appendChar(buffer, &length, '\n');
+    if (ok) UART_Write(buffer, length);
+#endif
 }

@@ -1,0 +1,17 @@
+#ifndef TELEMETRY_CONFIG_H
+#define TELEMETRY_CONFIG_H
+
+#define TELEMETRY_MODE_OFF   0
+#define TELEMETRY_MODE_MOTOR 1
+#define TELEMETRY_MODE_IMU   2
+
+/* Select one periodic VOFA text stream. UART receive remains enabled in all modes. */
+#define TELEMETRY_OUTPUT_MODE TELEMETRY_MODE_IMU
+
+#if (TELEMETRY_OUTPUT_MODE != TELEMETRY_MODE_OFF) && \
+    (TELEMETRY_OUTPUT_MODE != TELEMETRY_MODE_MOTOR) && \
+    (TELEMETRY_OUTPUT_MODE != TELEMETRY_MODE_IMU)
+#error "Invalid TELEMETRY_OUTPUT_MODE"
+#endif
+
+#endif

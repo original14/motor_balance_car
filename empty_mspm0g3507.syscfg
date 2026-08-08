@@ -12,12 +12,16 @@ const SYSCTL = scripting.addModule("/ti/driverlib/SYSCTL");
 const GPIO   = scripting.addModule("/ti/driverlib/GPIO", {}, false);
 const GPIO1  = GPIO.addInstance();
 const GPIO2  = GPIO.addInstance();
+const GPIO3  = GPIO.addInstance();
 const PWM    = scripting.addModule("/ti/driverlib/PWM", {}, false);
 const PWM1   = PWM.addInstance();
 const QEI    = scripting.addModule("/ti/driverlib/QEI", {}, false);
 const QEI1   = QEI.addInstance();
+const SPI    = scripting.addModule("/ti/driverlib/SPI", {}, false);
+const SPI1   = SPI.addInstance();
 const TIMER  = scripting.addModule("/ti/driverlib/TIMER", {}, false);
 const TIMER1 = TIMER.addInstance();
+const TIMER2 = TIMER.addInstance();
 const UART   = scripting.addModule("/ti/driverlib/UART", {}, false);
 const UART1  = UART.addInstance();
 const ProjectConfig = scripting.addModule("/ti/project_config/ProjectConfig");
@@ -65,6 +69,32 @@ GPIO2.associatedPins[1].interruptEn      = true;
 GPIO2.associatedPins[1].polarity         = "RISE_FALL";
 GPIO2.associatedPins[1].pin.$assign      = "PB1";
 
+/* ICM42688-P: software-controlled nCS plus an input-only INT1 pin. */
+GPIO3.$name = "IMU_GPIO";
+GPIO3.associatedPins.create(2);
+GPIO3.associatedPins[0].$name        = "CS";
+GPIO3.associatedPins[0].initialValue = "SET";
+GPIO3.associatedPins[0].pin.$assign  = "PA15";
+GPIO3.associatedPins[1].$name        = "INT1";
+GPIO3.associatedPins[1].direction    = "INPUT";
+GPIO3.associatedPins[1].pin.$assign  = "PA16";
+
+/*
+ * SPI0 drives the four electrical signals SCLK, MOSI, MISO and GPIO nCS.
+ * MSPM0 uses its MOTO3 frame setting when chip select is controlled by GPIO.
+ */
+SPI1.$name                      = "IMU_SPI";
+SPI1.frameFormat                = "MOTO3";
+SPI1.polarity                   = "0";
+SPI1.phase                      = "0";
+SPI1.dataSize                   = 8;
+SPI1.bitOrder                   = "MSB";
+SPI1.targetBitRate              = 1000000;
+SPI1.peripheral.$assign         = "SPI0";
+SPI1.peripheral.sclkPin.$assign = "PA12";
+SPI1.peripheral.mosiPin.$assign = "PA14";
+SPI1.peripheral.misoPin.$assign = "PA13";
+
 /* Right AB encoder: TIMG8 hardware QEI avoids high-rate GPIO interrupts. */
 QEI1.$name                      = "RIGHT_ENCODER_QEI";
 QEI1.loadValue                  = 65535;
@@ -90,6 +120,14 @@ TIMER1.timerPeriod        = "10 ms";
 TIMER1.timerClkPrescale   = 8;
 TIMER1.interrupts         = ["ZERO"];
 TIMER1.peripheral.$assign = "TIMG0";
+
+/* 500 Hz IMU acquisition; lower priority than the existing motor loop. */
+TIMER2.$name              = "IMU_SAMPLE_TIMER";
+TIMER2.timerMode          = "PERIODIC";
+TIMER2.timerPeriod        = "2 ms";
+TIMER2.interrupts         = ["ZERO"];
+TIMER2.interruptPriority  = "2";
+TIMER2.peripheral.$assign = "TIMG6";
 
 /* 板载 CH340：UART0, PA10/PA11, 115200 8N1, RX 中断。 */
 UART1.$name                      = "DEBUG_UART";
