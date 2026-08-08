@@ -66,7 +66,7 @@ static bool appendResponseFloat4(char *buffer, size_t *length, float value)
     return appendResponseChar(buffer, length, (char)('0' + (scaled % 10U)));
 }
 
-static void sendBalanceError(void)
+static void sendCommandError(void)
 {
     static const char response[] = "ERR\r\n";
     UART_Write(response, sizeof(response) - 1U);
@@ -232,7 +232,7 @@ static bool executeLine(const char *line)
     }
     if (strncmp(line, "BAL", 3U) == 0) {
         bool ok = executeBalanceLine(line);
-        if (!ok) sendBalanceError();
+        if (!ok) sendCommandError();
         return ok;
     }
     if (strncmp(line, "LPID,", 5U) == 0) return parsePid(line + 5, MOTOR_LEFT);
@@ -249,8 +249,16 @@ static bool executeLine(const char *line)
         return parsePidGain(line + 4, MOTOR_RIGHT, MOTOR_PID_GAIN_KI);
     if (strncmp(line, "RKD,", 4U) == 0)
         return parsePidGain(line + 4, MOTOR_RIGHT, MOTOR_PID_GAIN_KD);
-    if (strncmp(line, "LSPD,", 5U) == 0) return parseTarget(line + 5, MOTOR_LEFT);
-    if (strncmp(line, "RSPD,", 5U) == 0) return parseTarget(line + 5, MOTOR_RIGHT);
+    if (strncmp(line, "LSPD,", 5U) == 0) {
+        bool ok = parseTarget(line + 5, MOTOR_LEFT);
+        if (!ok && (MotorApp_GetState() == MOTOR_APP_BALANCE)) sendCommandError();
+        return ok;
+    }
+    if (strncmp(line, "RSPD,", 5U) == 0) {
+        bool ok = parseTarget(line + 5, MOTOR_RIGHT);
+        if (!ok && (MotorApp_GetState() == MOTOR_APP_BALANCE)) sendCommandError();
+        return ok;
+    }
     return false;
 }
 

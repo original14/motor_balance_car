@@ -5,6 +5,7 @@
 #define TELEMETRY_MODE_MOTOR 1
 #define TELEMETRY_MODE_IMU   2
 #define TELEMETRY_MODE_BALANCE 3
+#define TELEMETRY_BALANCE_FIELD_COUNT 19U
 
 /* Select one periodic VOFA text stream. UART receive remains enabled in all modes. */
 #define TELEMETRY_OUTPUT_MODE TELEMETRY_MODE_BALANCE

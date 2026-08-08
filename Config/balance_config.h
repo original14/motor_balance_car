@@ -21,14 +21,22 @@
 #define BALANCE_TARGET_MIN_DEG               (-5.0f)
 #define BALANCE_TARGET_MAX_DEG                 5.0f
 
-/* First-stage limit is 25% of the configured 1280-count per-motor maximum. */
-#define BALANCE_OUTPUT_LIMIT                 320.0f
+/*
+ * Balance output is a wheel-speed target in encoder counts per 10 ms,
+ * matching LSPD/RSPD and the existing 100 Hz speed PID. 300 is the existing
+ * documented speed-PID test target and is 10% of MOTOR_TARGET_VALUE_LIMIT.
+ */
+#define BALANCE_SPEED_TARGET_LIMIT           300.0f
 #define BALANCE_INTEGRAL_LIMIT                20.0f
 
 #define BALANCE_START_MAX_ANGLE_DEG            5.0f
 #define BALANCE_FALL_ANGLE_DEG                25.0f
 
-/* Change only this sign if the first suspended-wheel feedback-direction test fails. */
-#define BALANCE_OUTPUT_SIGN                    1.0f
+/*
+ * Forward pitch is positive while the controller error is target - pitch.
+ * The minus sign converts the resulting negative correction into the existing
+ * positive-forward wheel-speed convention. Verify this with suspended wheels.
+ */
+#define BALANCE_OUTPUT_SIGN                  (-1.0f)
 
 #endif

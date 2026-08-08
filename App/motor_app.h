@@ -57,8 +57,13 @@ typedef struct {
     float pOutput;
     float iOutput;
     float dOutput;
-    float balanceOutput;
-    float appliedMotorOutput;
+    float balanceSpeedTarget;
+    float leftSpeedTarget;
+    int32_t leftActualSpeed;
+    int32_t leftSpeedPidOutputPwm;
+    float rightSpeedTarget;
+    int32_t rightActualSpeed;
+    int32_t rightSpeedPidOutputPwm;
     bool enabled;
     bool fault;
 } MotorBalanceTelemetry;

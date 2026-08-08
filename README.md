@@ -1,5 +1,22 @@
-# MSPM0G3507 平衡车工程
+# MSPM0G3507 balance car
 
-本工程是从 `motor` 双电机闭环工程另存得到的平衡车版本，保留了 TB6612FNG、左右编码器、双轮速度 PID、串口命令和 VOFA+ 遥测基础。
+This CCS Theia project targets the MSPM0G3507 and contains:
 
-当前代码仍是底盘电机速度环，不包含 IMU 驱动、姿态解算、直立环或转向环。接入平衡车硬件前，请先阅读 [README_BALANCE_CAR.md](README_BALANCE_CAR.md)，并保持电机悬空完成方向与编码器检查。
+- ICM42688-P SPI sampling and a 500 Hz complementary-filter attitude estimate;
+- LEVEL/IMUZERO pitch calibration;
+- a 500 Hz balance PID/PD controller;
+- existing independent left/right 100 Hz encoder speed PID loops;
+- TB6612FNG output, runtime serial tuning and VOFA telemetry;
+- stop, sensor-validity, start-angle, fall-angle and encoder feedback protection.
+
+The current balance architecture is cascaded: the balance controller produces
+wheel-speed targets, and the existing left/right speed PIDs produce the final
+PWM commands. Balance mode remains OFF after reset and motors do not start
+automatically.
+
+Read these before hardware testing:
+
+- [README_BALANCE_CONTROL.md](README_BALANCE_CONTROL.md)
+- [README_BALANCE_SPEED_CASCADE.md](README_BALANCE_SPEED_CASCADE.md)
+- [README_MOTOR_TEST.md](README_MOTOR_TEST.md)
+- [README_ICM42688.md](README_ICM42688.md)

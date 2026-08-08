@@ -27,7 +27,7 @@ void BalanceController_Init(BalanceController *controller)
     controller->ki = BALANCE_KI_DEFAULT;
     controller->kd = BALANCE_KD_DEFAULT;
     controller->target_angle_deg = BALANCE_TARGET_DEFAULT_DEG;
-    controller->output_limit = BALANCE_OUTPUT_LIMIT;
+    controller->output_limit = BALANCE_SPEED_TARGET_LIMIT;
     controller->integral_limit = BALANCE_INTEGRAL_LIMIT;
     controller->enabled = false;
     BalanceController_Reset(controller);

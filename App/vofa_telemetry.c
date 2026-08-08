@@ -35,7 +35,8 @@ static bool appendUnsigned(char *buffer, size_t *length, uint64_t value)
     return true;
 }
 
-#if TELEMETRY_OUTPUT_MODE == TELEMETRY_MODE_MOTOR
+#if (TELEMETRY_OUTPUT_MODE == TELEMETRY_MODE_MOTOR) || \
+    (TELEMETRY_OUTPUT_MODE == TELEMETRY_MODE_BALANCE)
 static bool appendInteger(char *buffer, size_t *length, int64_t value)
 {
     uint64_t magnitude;
@@ -47,7 +48,9 @@ static bool appendInteger(char *buffer, size_t *length, int64_t value)
     }
     return appendUnsigned(buffer, length, magnitude);
 }
+#endif
 
+#if TELEMETRY_OUTPUT_MODE == TELEMETRY_MODE_MOTOR
 static bool appendFixed2(char *buffer, size_t *length, float value)
 {
     uint64_t scaled;
@@ -197,9 +200,19 @@ void VOFATelemetry_Process(void)
     ok &= appendChar(buffer, &length, ',');
     ok &= appendFixed4(buffer, &length, data.dOutput);
     ok &= appendChar(buffer, &length, ',');
-    ok &= appendFixed4(buffer, &length, data.balanceOutput);
+    ok &= appendFixed4(buffer, &length, data.balanceSpeedTarget);
     ok &= appendChar(buffer, &length, ',');
-    ok &= appendFixed4(buffer, &length, data.appliedMotorOutput);
+    ok &= appendFixed4(buffer, &length, data.leftSpeedTarget);
+    ok &= appendChar(buffer, &length, ',');
+    ok &= appendInteger(buffer, &length, data.leftActualSpeed);
+    ok &= appendChar(buffer, &length, ',');
+    ok &= appendInteger(buffer, &length, data.leftSpeedPidOutputPwm);
+    ok &= appendChar(buffer, &length, ',');
+    ok &= appendFixed4(buffer, &length, data.rightSpeedTarget);
+    ok &= appendChar(buffer, &length, ',');
+    ok &= appendInteger(buffer, &length, data.rightActualSpeed);
+    ok &= appendChar(buffer, &length, ',');
+    ok &= appendInteger(buffer, &length, data.rightSpeedPidOutputPwm);
     ok &= appendChar(buffer, &length, ',');
     ok &= appendUnsigned(buffer, &length, data.enabled ? 1U : 0U);
     ok &= appendChar(buffer, &length, ',');

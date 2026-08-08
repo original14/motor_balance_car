@@ -1,59 +1,75 @@
-# First-stage balance control
+# Cascaded balance control
 
-This stage adds a directly driven 500 Hz balance PID/PD controller. It does not
-add a speed outer loop or steering loop. The existing 100 Hz wheel-speed PID is
-preserved, but it cannot write PWM while `MOTOR_APP_BALANCE` owns the motors.
+The balance controller no longer writes motor PWM directly. It produces a
+wheel-speed target which is consumed by the existing left/right speed PID loops.
+The detailed ownership and timing design is in
+[README_BALANCE_SPEED_CASCADE.md](README_BALANCE_SPEED_CASCADE.md).
 
-## Control law and timing
+## Control law and units
 
-The verified sign convention is forward pitch positive. The target defaults to
-zero degrees:
+Forward pitch and pitch rate are positive. The target defaults to zero degrees:
 
 ```text
 error = target_pitch - pitch_angle
 P = kp * error
-integral = integral + error * dt
+integral = integral + error * 0.002
 I = ki * integral
 D = -kd * pitch_rate
-unclamped = P + I + D
-balance_output = clamp(unclamped, -output_limit, +output_limit)
-motor_command = BALANCE_OUTPUT_SIGN * balance_output
+balanceSpeedTarget = clamp(P + I + D,
+                           -BALANCE_SPEED_TARGET_LIMIT,
+                           +BALANCE_SPEED_TARGET_LIMIT)
+
+leftSpeedTarget  = BALANCE_OUTPUT_SIGN * balanceSpeedTarget
+rightSpeedTarget = BALANCE_OUTPUT_SIGN * balanceSpeedTarget
 ```
 
-`D` uses the measured gyroscope pitch rate, not numerical angle
-differentiation. For a constant target, `d(error)/dt = -pitch_rate`, which is
-why the derivative term is `-kd * pitch_rate_dps`.
+`balanceSpeedTarget`, `leftSpeedTarget` and `rightSpeedTarget` use exactly the
+same unit as `LSPD/RSPD`: encoder counts per 10 ms speed-control period. They are
+not RPM, PWM counts or duty cycle. P, I and D are therefore also expressed in
+encoder counts per 10 ms.
 
-TIMG6 runs the complete ordered path every 2 ms: read ICM42688, update the
-attitude estimator, update the balance controller, then update both motor PWM
-commands. UART formatting and VOFA output never run in this ISR. TIMG0 still
-runs encoder collection and the existing speed-control state machine at 100 Hz,
-but its balance-state branch deliberately performs no PWM writes.
+`D` uses the measured gyroscope pitch rate. For a fixed target,
+`d(error)/dt = -pitch_rate`, avoiding noisy numerical angle differentiation.
+
+## Timing and output ownership
+
+- TIMG6, 500 Hz: read ICM42688, update attitude, run balance PID, publish the
+  latest `balanceSpeedTarget`. It performs no normal motor PWM write.
+- TIMG0, 100 Hz: read and clear both encoder deltas, select manual or balance
+  speed targets, run the original two `SpeedPID_Update()` calls and write PWM
+  through `TB6612_SetSignedPwm()`.
+- Main loop, about 50 Hz telemetry trigger: parse UART commands and format VOFA
+  output. No UART formatting runs in either control ISR.
+
+PID_TEST and BALANCE share the same speed PID instances and execution function:
+
+```text
+PID_TEST: manual LSPD/RSPD -> existing speed PIDs -> PWM
+BALANCE:  500 Hz balance target -> existing speed PIDs at 100 Hz -> PWM
+```
+
+`LSPD/RSPD` are rejected with `ERR` while BALANCE is active.
 
 ## Safe defaults and limits
 
-All values are centralized in `Config/balance_config.h`:
+- balance is OFF after reset; PID auto-start is disabled;
+- KP/KI/KD defaults are `0 / 0 / 0`;
+- target pitch range is `-5..+5 deg`;
+- balance speed-target limit is `+/-300 encoder counts per 10 ms`;
+- the limit matches the documented speed-PID test target and is 10% of the
+  existing manual target acceptance limit of 3000;
+- integral-state limit is `+/-20 degree-seconds`;
+- BAL ON requires `|pitch| <= 5 deg`;
+- fall protection triggers at `|pitch| > 25 deg`;
+- `BALANCE_OUTPUT_SIGN` is `-1` for the current positive-forward speed
+  convention and must still be confirmed with suspended wheels.
 
-- KP/KI/KD defaults: `0 / 0 / 0`; balance mode is also disabled at startup.
-- accepted KP range: `0..60`.
-- accepted KI range: `0..10`.
-- accepted KD range: `0..5`.
-- target range: `-5..+5 deg`, default `0 deg`.
-- controller output limit: `+/-320` PWM command counts.
-- integral-state limit: `+/-20 degree-seconds`.
-- BAL ON start-angle limit: `+/-5 deg`.
-- fall angle: `+/-25 deg`.
-- `BALANCE_OUTPUT_SIGN`: `+1.0` until the physical feedback direction is
-  confirmed.
-
-The integral is cleared on disable, BAL OFF, STOP, fall/fault and whenever KI
-changes. Conditional integration rejects a candidate integral update when the
-output is saturated and the current error would push it farther into the same
-saturation direction.
+Conditional integration prevents further windup when the speed target is
+saturated. Balance and both speed-PID integrators are reset on BAL OFF, STOP,
+fall, invalid sensor data or control fault. Changing balance KI also clears its
+stored integral.
 
 ## Commands
-
-Commands use spaces and require a line ending:
 
 ```text
 BAL ON
@@ -66,75 +82,59 @@ BAL PID?
 BAL TARGET 0.0
 ```
 
-New balance commands return a short `OK ...` response or `ERR`. Numeric input
-must be finite, completely parsed and inside the configured limits; otherwise
-the previous value is retained.
+Existing `LKP/LKI/LKD`, `RKP/RKI/RKD`, `LPID/RPID`, `LSPD/RSPD` and `STOP`
+commands are retained. Balance gains now map angle error to a wheel-speed target,
+so parameters from the former direct-PWM architecture must not be copied.
 
-`BAL ON` is rejected unless all of these are true:
+`BAL ON` requires valid IMU and attitude data, completed LEVEL calibration, no
+active calibration, a safe start angle, zero current manual speed/PWM and no
+STOP or motor fault. `BAL OFF` immediately clears all targets, resets both
+controllers, zeros PWM and disables TB6612. STOP remains latched until MCU reset.
 
-- the latest IMU and attitude are valid;
-- LEVEL/IMUZERO has completed and no new level calibration is active;
-- absolute pitch is at most 5 degrees;
-- no STOP latch or existing motor fault is active;
-- the current state is safe, or is the startup speed-PID test state with zero
-  requested speed and zero applied PWM.
+During BALANCE, invalid IMU/attitude data, lost calibration, non-finite control
+data, excessive pitch, direction mismatch or missing encoder feedback clears the
+published speed target and both speed-PID histories before PWM is stopped.
 
-Successful BAL ON resets both speed controllers, stops existing motor output,
-clears an earlier balance-fall fault and transfers exclusive PWM ownership to
-the balance controller. BAL OFF resets both controllers, sets both targets and
-PWM to zero, and enters the safe state. It does not clear a STOP latch. This
-project has no ARM command, so after STOP the existing latch intentionally
-requires a processor reset before any BAL ON can succeed.
+## VOFA BALANCE channels
 
-While balance is active, invalid IMU/attitude data, loss of level calibration,
-non-finite control data, or `|pitch_angle| > 25 deg` immediately disables and
-resets the controller, sets both PWM outputs to zero, disables TB6612, records a
-balance fault, and enters the safe state. It never restarts automatically;
-physically right the vehicle and issue BAL ON again.
+The default BALANCE stream sends 19 fields at about 50 Hz:
 
-## VOFA balance mode
+| Channel | Variable | Unit / meaning |
+| --- | --- | --- |
+| I0 | targetPitchDeg | deg |
+| I1 | pitchAngleDeg | deg, filtered pitch |
+| I2 | pitchRateDps | deg/s |
+| I3 | angleErrorDeg | deg |
+| I4 | balanceKp | speed-target counts/10 ms per deg |
+| I5 | balanceKi | speed-target counts/10 ms per degree-second |
+| I6 | balanceKd | speed-target counts/10 ms per deg/s |
+| I7 | balancePOutput | encoder counts/10 ms |
+| I8 | balanceIOutput | encoder counts/10 ms |
+| I9 | balanceDOutput | encoder counts/10 ms |
+| I10 | balanceSpeedTarget | raw clamped balance output, encoder counts/10 ms |
+| I11 | leftSpeedTarget | signed target consumed by left speed PID |
+| I12 | leftActualSpeed | left encoder delta during the last 10 ms |
+| I13 | leftSpeedPidOutputPWM | signed applied PWM count |
+| I14 | rightSpeedTarget | signed target consumed by right speed PID |
+| I15 | rightActualSpeed | right encoder delta during the last 10 ms |
+| I16 | rightSpeedPidOutputPWM | signed applied PWM count |
+| I17 | balanceEnabled | 0 or 1 |
+| I18 | balanceFault | latched balance fault, 0 or 1 |
 
-`TELEMETRY_MODE_BALANCE` is the default and sends these 14 fields at about
-50 Hz:
+I10 is updated at 500 Hz. I11-I16 reflect the most recent 100 Hz speed-PID
+cycle, so a normal delay of up to one 10 ms period can appear between them.
 
-| Channel | Value |
-| --- | --- |
-| I0 | target pitch |
-| I1 | filtered pitch angle |
-| I2 | pitch rate |
-| I3 | angle error |
-| I4 | KP |
-| I5 | KI |
-| I6 | KD |
-| I7 | P output |
-| I8 | I output |
-| I9 | D output |
-| I10 | clamped balance output before direction sign |
-| I11 | applied signed motor command after `BALANCE_OUTPUT_SIGN` and rounding |
-| I12 | balance enabled, 0 or 1 |
-| I13 | latched balance fault, 0 or 1 |
+## First hardware tuning sequence
 
-The IMU and MOTOR telemetry modes remain available for separate diagnostics.
+1. Keep wheels suspended and the chassis restrained. Verify positive `LSPD` and
+   `RSPD` make both wheels move forward and produce positive encoder deltas.
+2. Complete LEVEL. Set balance KI and KD to zero and use a very small KP.
+3. Enable BALANCE and tilt forward slightly. Both wheels must move forward to
+   chase the chassis; a backward tilt must make both move backward.
+4. If both directions are reversed, use BAL OFF and change only
+   `BALANCE_OUTPUT_SIGN`. Do not make KP negative and do not make left/right
+   targets opposite signs.
+5. Increase KP gradually, then add KD for damping. Keep KI at zero initially.
 
-## First physical test: verify feedback direction before tuning
-
-Keep the wheels suspended, restrain the chassis and keep motor power easy to
-disconnect. Complete LEVEL, then use `KI=0`, `KD=0` and a very small KP. Do not
-try to stand the vehicle yet.
-
-1. Send BAL ON and tilt the body forward slightly. The wheels must rotate
-   forward to chase the falling body.
-2. Tilt it backward. The wheels must rotate backward.
-3. If either response is reversed, use BAL OFF immediately and change only
-   `BALANCE_OUTPUT_SIGN`. Do not use a negative KP to repair direction.
-
-After direction is correct, keep KI and KD at zero and increase KP gradually.
-Too little KP gives inadequate recovery; too much creates rapid oscillation or
-violent correction. Once proportional recovery is clear, add KD gradually to
-increase damping. Too much KD creates harsh braking, rapid reversals or motor
-noise.
-
-Tune a usable PD response before considering KI. Slow vehicle travel while
-balancing should later be handled primarily by a slower speed PI loop that
-adjusts target pitch. That speed outer loop is intentionally not implemented
-in this stage.
+The implementation and build do not prove motor direction or real-time margin;
+both require controlled hardware validation before ground testing.

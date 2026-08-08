@@ -1,7 +1,7 @@
 # ICM42688-P pitch attitude integration
 
 This document describes pitch attitude estimation and mechanical-level
-calibration on the ICM42688-P data path. The optional first-stage balance
+calibration on the ICM42688-P data path. The optional cascaded balance
 controller consumes these verified signals only after an explicit `BAL ON`;
 see `README_BALANCE_CONTROL.md` for its separate safety rules.
 
@@ -20,9 +20,10 @@ SPI0 runs at 1 MHz, 8 bits, MSB first, CPOL=0 and CPHA=0. TI SysConfig uses
 still contains SCLK, MOSI, MISO and nCS.
 
 TIMG6 triggers the deterministic path at 500 Hz (2 ms). Its ISR reads the
-sensor, updates the attitude estimator and, only while balance mode owns the
-motors, updates the balance controller and PWM. UART parsing, formatting and
-VOFA transmission remain in the main loop at approximately 50 Hz.
+sensor, updates the attitude estimator and, while balance mode is active,
+publishes the latest wheel-speed target. The existing 100 Hz motor-control ISR
+runs both wheel-speed PIDs and writes PWM. UART parsing, formatting and VOFA
+transmission remain in the main loop at approximately 50 Hz.
 
 ## Sensor setup
 

@@ -1,37 +1,21 @@
-# 平衡车版本说明
+# Balance-car project status
 
-## 版本定位
+This project currently provides the full first cascaded balance-control path:
 
-这是 `motor` 工程当前工作区的独立副本，CCS 工程名为 `motor_balance_car`。原工程没有被修改，构建产物和原 Git 仓库也没有复制到本目录。
+- 500 Hz ICM42688 sampling and pitch estimation;
+- command-enabled 500 Hz balance PID/PD;
+- original independent 100 Hz left/right encoder speed PID loops;
+- 20 kHz TB6612 PWM generated only by the speed-control path;
+- runtime balance and speed-PID tuning, VOFA telemetry and safety shutdowns.
 
-本版本目前提供平衡车底盘的基础执行层：
+The balance controller publishes a wheel-speed target in encoder counts per
+10 ms. It does not publish PWM. The speed loops retain their original tuning,
+math, measurement units and 100 Hz period.
 
-- MSPM0G3507 + DriverLib + SysConfig；
-- TB6612FNG 双路直流电机驱动；
-- 左右轮编码器计数；
-- 100 Hz 双轮速度 PID；
-- ICM42688-P 500 Hz 六轴采样、俯仰姿态解算和 LEVEL 校零；
-- 默认关闭、命令启用的 500 Hz 直立 PID/PD 第一阶段；
-- 20 kHz PWM；
-- 串口运行参数调整和 VOFA+ 遥测；
-- 停车、方向异常和无反馈保护。
+Balance remains disabled after reset. Complete the motor/encoder direction tests
+and LEVEL calibration before sending BAL ON. See
+[README_BALANCE_CONTROL.md](README_BALANCE_CONTROL.md) and
+[README_BALANCE_SPEED_CASCADE.md](README_BALANCE_SPEED_CASCADE.md).
 
-## 当前边界
-
-当前直立环是直接控制PWM的第一阶段，包含启动角限制、倾倒保护、STOP
-锁存和控制权互斥，但尚未经过本版本的实车直立参数整定。速度外环、转向环
-以及速度PI调整目标俯仰角均未加入；现有100 Hz速度PID仅完整保留作独立测试。
-
-## 安全启动顺序
-
-1. 在车轮悬空、驱动电源可随时断开的条件下导入并编译工程。
-2. 确认左右电机方向、编码器方向和每周期计数符号一致。
-3. 保持默认目标值为 0，验证 `STOP` 和故障停机行为。
-4. 接入并单独验证 IMU，电机保持关闭。
-5. 按 `README_BALANCE_CONTROL.md` 先悬空确认反馈方向，再调PD；首次落地测试必须限制PWM。
-
-## 继承的调试接口
-
-串口保留原工程命令：`LSPD`、`RSPD`、`LPID`、`RPID`、单项 PID 参数命令以及 `STOP`。其中速度目标的单位仍是每 10 ms 控制周期的编码器增量，不是 RPM。
-
-详细电机层行为见 `README_MOTOR_TEST.md` 和 `MOTOR_PROJECT_REQUIREMENTS.md`。
+Steering control and an additional vehicle-speed outer loop are not included.
+No source/build validation should be interpreted as physical motor validation.

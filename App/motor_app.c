@@ -30,7 +30,7 @@ typedef struct {
     volatile bool directionTestDone;
     volatile bool stopLatched;
     volatile bool balanceFault;
-    volatile float appliedBalanceOutput;
+    volatile float balanceSpeedTarget;
 } MotorAppContext;
 
 static MotorAppContext gApp;
@@ -43,15 +43,19 @@ static bool controlParametersValid(void)
         (LEFT_MAX_PWM_COMMAND > 0.0f) && (RIGHT_MAX_PWM_COMMAND > 0.0f) &&
         (LEFT_MAX_PWM_COMMAND <= (float)MOTOR_PWM_TIMER_COUNTS) &&
         (RIGHT_MAX_PWM_COMMAND <= (float)MOTOR_PWM_TIMER_COUNTS) &&
-        isfinite(BALANCE_OUTPUT_LIMIT) && (BALANCE_OUTPUT_LIMIT > 0.0f) &&
-        (BALANCE_OUTPUT_LIMIT <= LEFT_MAX_PWM_COMMAND) &&
-        (BALANCE_OUTPUT_LIMIT <= RIGHT_MAX_PWM_COMMAND) &&
+        isfinite(BALANCE_SPEED_TARGET_LIMIT) &&
+        (BALANCE_SPEED_TARGET_LIMIT > 0.0f) &&
+        (BALANCE_SPEED_TARGET_LIMIT <= MOTOR_TARGET_VALUE_LIMIT) &&
         ((BALANCE_OUTPUT_SIGN == 1.0f) || (BALANCE_OUTPUT_SIGN == -1.0f)) &&
         isfinite(MOTOR_TARGET_VALUE_LIMIT) && (MOTOR_TARGET_VALUE_LIMIT > 0.0f);
 }
 
 static void enterFault(void)
 {
+    bool wasBalance;
+    uint32_t key = __get_PRIMASK();
+    __disable_irq();
+    wasBalance = (gApp.state == MOTOR_APP_BALANCE);
     gApp.state = MOTOR_APP_FAULT;
     gApp.stopLatched = true;
     gApp.leftRequestedTarget = 0.0f;
@@ -61,12 +65,16 @@ static void enterFault(void)
     SpeedPID_Reset(&gApp.leftPid);
     SpeedPID_Reset(&gApp.rightPid);
     BalanceController_Disable(&gApp.balanceController);
-    gApp.appliedBalanceOutput = 0.0f;
+    gApp.balanceSpeedTarget = 0.0f;
+    if (wasBalance) gApp.balanceFault = true;
     TB6612_EmergencyStopAll();
+    if (key == 0U) __enable_irq();
 }
 
 static void enterBalanceFault(void)
 {
+    uint32_t key = __get_PRIMASK();
+    __disable_irq();
     gApp.balanceFault = true;
     gApp.state = MOTOR_APP_SAFE;
     gApp.leftRequestedTarget = 0.0f;
@@ -76,8 +84,9 @@ static void enterBalanceFault(void)
     SpeedPID_Reset(&gApp.leftPid);
     SpeedPID_Reset(&gApp.rightPid);
     BalanceController_Disable(&gApp.balanceController);
-    gApp.appliedBalanceOutput = 0.0f;
+    gApp.balanceSpeedTarget = 0.0f;
     TB6612_EmergencyStopAll();
+    if (key == 0U) __enable_irq();
 }
 
 static bool oppositeSign(float target, float feedbackDelta)
@@ -108,11 +117,17 @@ static bool updateProtectionOne(float target, float feedbackDelta, int32_t pwm,
            (*noFeedbackCycles >= NO_FEEDBACK_FAULT_CYCLES);
 }
 
-static void runPidControl(void)
+static void runPidControl(float leftTarget, float rightTarget)
 {
     float leftOutput = 0.0f, rightOutput = 0.0f;
-    gApp.leftTarget = gApp.leftRequestedTarget;
-    gApp.rightTarget = gApp.rightRequestedTarget;
+    if (!isfinite(leftTarget) || !isfinite(rightTarget) ||
+        (absFloat(leftTarget) > MOTOR_TARGET_VALUE_LIMIT) ||
+        (absFloat(rightTarget) > MOTOR_TARGET_VALUE_LIMIT)) {
+        enterFault();
+        return;
+    }
+    gApp.leftTarget = leftTarget;
+    gApp.rightTarget = rightTarget;
 
     if (absFloat(gApp.leftTarget) < TARGET_STOP_DEADBAND_VALUE) {
         SpeedPID_Reset(&gApp.leftPid);
@@ -165,7 +180,7 @@ void MotorApp_Init(void)
     gApp.directionTestDone = false;
     gApp.stopLatched = false;
     gApp.balanceFault = false;
-    gApp.appliedBalanceOutput = 0.0f;
+    gApp.balanceSpeedTarget = 0.0f;
 
     SpeedPID_Init(&gApp.leftPid, LEFT_DEFAULT_KP, LEFT_DEFAULT_KI, LEFT_DEFAULT_KD,
         PID_CONTROL_PERIOD_S);
@@ -216,7 +231,8 @@ void MotorApp_ControlTick(void)
             gApp.state = MOTOR_APP_SAFE;
         }
     } else if (gApp.state == MOTOR_APP_BALANCE) {
-        /* The 500 Hz balance tick exclusively owns PWM in this state. */
+        float balanceTarget = BALANCE_OUTPUT_SIGN * gApp.balanceSpeedTarget;
+        runPidControl(balanceTarget, balanceTarget);
     } else if ((gApp.state == MOTOR_APP_PID_TEST) && !gApp.stopLatched) {
 #if PID_AUTO_START_ENABLE == 1
         if (gApp.controlTicks == ((PID_AUTO_START_DELAY_MS * PID_CONTROL_FREQUENCY_HZ) / 1000U)) {
@@ -224,7 +240,7 @@ void MotorApp_ControlTick(void)
             gApp.rightRequestedTarget = RIGHT_DEFAULT_TARGET_VALUE;
         }
 #endif
-        runPidControl();
+        runPidControl(gApp.leftRequestedTarget, gApp.rightRequestedTarget);
     } else {
         TB6612_EmergencyStopAll();
     }
@@ -237,8 +253,7 @@ void MotorApp_ControlTick(void)
 void MotorApp_BalanceTick(bool imuValid, bool attitudeValid, bool levelCalibrated,
     float pitchAngleDeg, float pitchRateDps)
 {
-    float balanceOutput;
-    float motorCommand;
+    float balanceSpeedTarget;
 
     if (gApp.state != MOTOR_APP_BALANCE) return;
     if (gApp.stopLatched || !imuValid || !attitudeValid || !levelCalibrated ||
@@ -248,18 +263,13 @@ void MotorApp_BalanceTick(bool imuValid, bool attitudeValid, bool levelCalibrate
         return;
     }
 
-    balanceOutput = BalanceController_Update(&gApp.balanceController,
+    balanceSpeedTarget = BalanceController_Update(&gApp.balanceController,
         pitchAngleDeg, pitchRateDps, BALANCE_CONTROL_DT_S);
-    motorCommand = BALANCE_OUTPUT_SIGN * balanceOutput;
-    if (!isfinite(balanceOutput) || !isfinite(motorCommand)) {
+    if (!isfinite(balanceSpeedTarget)) {
         enterBalanceFault();
         return;
     }
-
-    TB6612_EnableDriver();
-    TB6612_SetSignedPwm(MOTOR_LEFT, motorCommand);
-    TB6612_SetSignedPwm(MOTOR_RIGHT, motorCommand);
-    gApp.appliedBalanceOutput = (float)TB6612_GetAppliedPwm(MOTOR_LEFT);
+    gApp.balanceSpeedTarget = balanceSpeedTarget;
 }
 
 bool MotorApp_SetPidTunings(MotorChannel motor, float kp, float ki, float kd)
@@ -297,9 +307,14 @@ bool MotorApp_SetPidGain(MotorChannel motor, MotorPidGain gain, float value)
 bool MotorApp_SetTargetValue(MotorChannel motor, float targetValue)
 {
     uint32_t key;
-    if (!isfinite(targetValue) || (absFloat(targetValue) > MOTOR_TARGET_VALUE_LIMIT) ||
-        (gApp.state != MOTOR_APP_PID_TEST) || gApp.stopLatched) return false;
-    key = __get_PRIMASK(); __disable_irq();
+    if (!isfinite(targetValue) ||
+        (absFloat(targetValue) > MOTOR_TARGET_VALUE_LIMIT)) return false;
+    key = __get_PRIMASK();
+    __disable_irq();
+    if ((gApp.state != MOTOR_APP_PID_TEST) || gApp.stopLatched) {
+        if (key == 0U) __enable_irq();
+        return false;
+    }
     if (motor == MOTOR_LEFT) gApp.leftRequestedTarget = targetValue;
     else if (motor == MOTOR_RIGHT) gApp.rightRequestedTarget = targetValue;
     else { if (key == 0U) __enable_irq(); return false; }
@@ -339,7 +354,7 @@ bool MotorApp_EnableBalance(bool imuValid, bool attitudeValid, bool levelCalibra
     SpeedPID_Reset(&gApp.rightPid);
     TB6612_EmergencyStopAll();
     BalanceController_Enable(&gApp.balanceController);
-    gApp.appliedBalanceOutput = 0.0f;
+    gApp.balanceSpeedTarget = 0.0f;
     gApp.balanceFault = false;
     gApp.state = MOTOR_APP_BALANCE;
     if (key == 0U) __enable_irq();
@@ -351,7 +366,7 @@ void MotorApp_DisableBalance(void)
     uint32_t key = __get_PRIMASK();
     __disable_irq();
     BalanceController_Disable(&gApp.balanceController);
-    gApp.appliedBalanceOutput = 0.0f;
+    gApp.balanceSpeedTarget = 0.0f;
     gApp.leftRequestedTarget = 0.0f;
     gApp.rightRequestedTarget = 0.0f;
     gApp.leftTarget = 0.0f;
@@ -423,7 +438,7 @@ void MotorApp_EmergencyStop(void)
     SpeedPID_Reset(&gApp.leftPid);
     SpeedPID_Reset(&gApp.rightPid);
     BalanceController_Disable(&gApp.balanceController);
-    gApp.appliedBalanceOutput = 0.0f;
+    gApp.balanceSpeedTarget = 0.0f;
     TB6612_EmergencyStopAll();
     if (key == 0U) __enable_irq();
 }
@@ -473,8 +488,13 @@ void MotorApp_GetBalanceTelemetry(MotorBalanceTelemetry *telemetry)
     telemetry->pOutput = controllerTelemetry.p_output;
     telemetry->iOutput = controllerTelemetry.i_output;
     telemetry->dOutput = controllerTelemetry.d_output;
-    telemetry->balanceOutput = controllerTelemetry.output;
-    telemetry->appliedMotorOutput = gApp.appliedBalanceOutput;
+    telemetry->balanceSpeedTarget = controllerTelemetry.output;
+    telemetry->leftSpeedTarget = gApp.leftTarget;
+    telemetry->leftActualSpeed = gApp.leftDelta;
+    telemetry->leftSpeedPidOutputPwm = TB6612_GetAppliedPwm(MOTOR_LEFT);
+    telemetry->rightSpeedTarget = gApp.rightTarget;
+    telemetry->rightActualSpeed = gApp.rightDelta;
+    telemetry->rightSpeedPidOutputPwm = TB6612_GetAppliedPwm(MOTOR_RIGHT);
     telemetry->enabled = (gApp.state == MOTOR_APP_BALANCE) &&
         controllerTelemetry.enabled;
     telemetry->fault = gApp.balanceFault;
