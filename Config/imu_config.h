@@ -22,4 +22,18 @@
 #define ICM42688_ACCEL_LSB_PER_G            8192.0f
 #define ICM42688_GYRO_LSB_PER_DPS             65.536f
 
+/* Installed-axis mapping and attitude-estimator configuration. */
+#define IMU_PITCH_GYRO_SIGN                        1.0f
+#define IMU_DEFAULT_PITCH_ZERO_OFFSET_DEG          (-7.2f)
+#define IMU_LEVEL_CALIBRATION_SAMPLES              300U
+#define IMU_LEVEL_CALIBRATION_MAX_TICKS            1000U
+#define IMU_LEVEL_MAX_GYRO_DPS                       5.0f
+
+#define ATTITUDE_UPDATE_HZ                          500U
+#define ATTITUDE_DT_S                                 0.002f
+#define ATTITUDE_COMPLEMENTARY_TAU_S                  0.30f
+#define ATTITUDE_ACCEL_NORM_MIN_G                      0.90f
+#define ATTITUDE_ACCEL_NORM_MAX_G                      1.10f
+#define ATTITUDE_RAD_TO_DEG                           57.2957795f
+
 #endif

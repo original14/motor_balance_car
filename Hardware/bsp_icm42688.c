@@ -243,9 +243,6 @@ bool ICM42688_Init(void)
         return false;
     }
 
-    NVIC_ClearPendingIRQ(IMU_SAMPLE_TIMER_INST_INT_IRQN);
-    NVIC_EnableIRQ(IMU_SAMPLE_TIMER_INST_INT_IRQN);
-    DL_TimerG_startCounter(IMU_SAMPLE_TIMER_INST);
     return true;
 }
 
@@ -283,12 +280,4 @@ uint32_t ICM42688_GetErrorCount(void)
     count = gErrorCount;
     if (key == 0U) __enable_irq();
     return count;
-}
-
-void IMU_SAMPLE_TIMER_INST_IRQHandler(void)
-{
-    if (DL_TimerG_getPendingInterrupt(IMU_SAMPLE_TIMER_INST) == DL_TIMER_IIDX_ZERO) {
-        ICM42688_Sample sample;
-        (void)ICM42688_ReadSample(&sample);
-    }
 }

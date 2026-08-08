@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "App/imu_app.h"
 #include "App/motor_app.h"
 #include "Config/telemetry_config.h"
 #include "Hardware/bsp_icm42688.h"
@@ -128,22 +129,36 @@ void VOFATelemetry_Process(void)
     if (ok) UART_Write(buffer, length);
 #elif TELEMETRY_OUTPUT_MODE == TELEMETRY_MODE_IMU
     static char buffer[VOFA_TX_BUFFER_SIZE];
+    AttitudeEstimate attitude;
     ICM42688_Sample data;
     size_t length = 0U;
     bool ok = true;
     if (!MotorApp_TakeTelemetryFlag()) return;
+    (void)IMUApp_GetAttitude(&attitude);
     (void)ICM42688_GetLatestSample(&data);
+    ok &= appendFixed4(buffer, &length, attitude.pitch_acc_deg);
+    ok &= appendChar(buffer, &length, ',');
+    ok &= appendFixed4(buffer, &length, attitude.pitch_rate_dps);
+    ok &= appendChar(buffer, &length, ',');
+    ok &= appendFixed4(buffer, &length, attitude.pitch_angle_deg);
+    ok &= appendChar(buffer, &length, ',');
+    ok &= appendFixed4(buffer, &length, attitude.pitch_acc_raw_deg);
+    ok &= appendChar(buffer, &length, ',');
+    ok &= appendFixed4(buffer, &length, attitude.pitch_zero_offset_deg);
+    ok &= appendChar(buffer, &length, ',');
     ok &= appendFixed4(buffer, &length, data.accel_x_g);
     ok &= appendChar(buffer, &length, ',');
     ok &= appendFixed4(buffer, &length, data.accel_y_g);
     ok &= appendChar(buffer, &length, ',');
     ok &= appendFixed4(buffer, &length, data.accel_z_g);
     ok &= appendChar(buffer, &length, ',');
-    ok &= appendFixed4(buffer, &length, data.gyro_x_dps);
-    ok &= appendChar(buffer, &length, ',');
     ok &= appendFixed4(buffer, &length, data.gyro_y_dps);
     ok &= appendChar(buffer, &length, ',');
-    ok &= appendFixed4(buffer, &length, data.gyro_z_dps);
+    ok &= appendFixed4(buffer, &length, attitude.accel_norm_g);
+    ok &= appendChar(buffer, &length, ',');
+    ok &= appendUnsigned(buffer, &length, attitude.attitude_valid ? 1U : 0U);
+    ok &= appendChar(buffer, &length, ',');
+    ok &= appendUnsigned(buffer, &length, attitude.level_calibrated ? 1U : 0U);
     ok &= appendChar(buffer, &length, ',');
     ok &= appendUnsigned(buffer, &length, data.valid ? 1U : 0U);
     ok &= appendChar(buffer, &length, ',');
@@ -152,6 +167,43 @@ void VOFATelemetry_Process(void)
     ok &= appendUnsigned(buffer, &length, data.sample_count);
     ok &= appendChar(buffer, &length, ',');
     ok &= appendUnsigned(buffer, &length, ICM42688_GetErrorCount());
+    ok &= appendChar(buffer, &length, '\r');
+    ok &= appendChar(buffer, &length, '\n');
+    if (ok) UART_Write(buffer, length);
+#elif TELEMETRY_OUTPUT_MODE == TELEMETRY_MODE_BALANCE
+    static char buffer[VOFA_TX_BUFFER_SIZE];
+    MotorBalanceTelemetry data;
+    size_t length = 0U;
+    bool ok = true;
+    if (!MotorApp_TakeTelemetryFlag()) return;
+    MotorApp_GetBalanceTelemetry(&data);
+    ok &= appendFixed4(buffer, &length, data.targetPitchDeg);
+    ok &= appendChar(buffer, &length, ',');
+    ok &= appendFixed4(buffer, &length, data.pitchAngleDeg);
+    ok &= appendChar(buffer, &length, ',');
+    ok &= appendFixed4(buffer, &length, data.pitchRateDps);
+    ok &= appendChar(buffer, &length, ',');
+    ok &= appendFixed4(buffer, &length, data.angleErrorDeg);
+    ok &= appendChar(buffer, &length, ',');
+    ok &= appendFixed4(buffer, &length, data.kp);
+    ok &= appendChar(buffer, &length, ',');
+    ok &= appendFixed4(buffer, &length, data.ki);
+    ok &= appendChar(buffer, &length, ',');
+    ok &= appendFixed4(buffer, &length, data.kd);
+    ok &= appendChar(buffer, &length, ',');
+    ok &= appendFixed4(buffer, &length, data.pOutput);
+    ok &= appendChar(buffer, &length, ',');
+    ok &= appendFixed4(buffer, &length, data.iOutput);
+    ok &= appendChar(buffer, &length, ',');
+    ok &= appendFixed4(buffer, &length, data.dOutput);
+    ok &= appendChar(buffer, &length, ',');
+    ok &= appendFixed4(buffer, &length, data.balanceOutput);
+    ok &= appendChar(buffer, &length, ',');
+    ok &= appendFixed4(buffer, &length, data.appliedMotorOutput);
+    ok &= appendChar(buffer, &length, ',');
+    ok &= appendUnsigned(buffer, &length, data.enabled ? 1U : 0U);
+    ok &= appendChar(buffer, &length, ',');
+    ok &= appendUnsigned(buffer, &length, data.fault ? 1U : 0U);
     ok &= appendChar(buffer, &length, '\r');
     ok &= appendChar(buffer, &length, '\n');
     if (ok) UART_Write(buffer, length);
